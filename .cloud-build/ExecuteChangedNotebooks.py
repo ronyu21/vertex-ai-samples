@@ -14,21 +14,19 @@
 # limitations under the License.
 
 import argparse
+import concurrent
 import dataclasses
 import datetime
-import functools
-import pathlib
 import os
+import pathlib
 import nbformat
 import subprocess
-from pathlib import Path
 from typing import List, Optional
 from tabulate import tabulate
-import tarfile
-from utils import util
 
 import execute_notebook_remote
-from utils import NotebookProcessors
+from utils import util, NotebookProcessors
+from google.api_core import operation
 
 
 def str2bool(v):
@@ -77,7 +75,7 @@ def execute_notebook(
     staging_bucket: str,
     variable_project_id: str,
     variable_region: str,
-) -> NotebookExecutionResult:
+) -> operation.Operation:
     print(f"Running notebook: {notebook}")
 
     # Read notebook
@@ -114,38 +112,40 @@ def execute_notebook(
 
     notebook_output_uri = "/".join([artifacts_uri, pathlib.Path(notebook).name])
 
-    result = NotebookExecutionResult(
-        notebook=notebook,
-        output_uri=notebook_output_uri,
-        duration=datetime.timedelta(seconds=0),
-        is_pass=False,
-        error_message=None,
+    # result = NotebookExecutionResult(
+    #     notebook=notebook,
+    #     output_uri=notebook_output_uri,
+    #     duration=datetime.timedelta(seconds=0),
+    #     is_pass=False,
+    #     error_message=None,
+    # )
+
+    # # TODO: Handle cases where multiple notebooks have the same name
+    # time_start = datetime.datetime.now()
+    # try:
+    code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
+
+    operation = execute_notebook_remote.execute_notebook_remote(
+        code_archive_uri=code_archive_uri,
+        notebook_uri=notebook,
+        notebook_output_uri=notebook_output_uri,
+        container_uri="gcr.io/cloud-devrel-public-resources/python-samples-testing-docker:latest",
     )
 
-    # TODO: Handle cases where multiple notebooks have the same name
-    time_start = datetime.datetime.now()
-    try:
-        code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
+    #     result.duration = datetime.datetime.now() - time_start
+    #     result.is_pass = True
+    #     print(f"{notebook} PASSED in {format_timedelta(result.duration)}.")
+    # except Exception as error:
+    #     result.duration = datetime.datetime.now() - time_start
+    #     result.is_pass = False
+    #     result.error_message = str(error)
+    #     print(
+    #         f"{notebook} FAILED in {format_timedelta(result.duration)}: {result.error_message}"
+    #     )
 
-        execute_notebook_remote.execute_notebook_remote(
-            code_archive_uri=code_archive_uri,
-            notebook_uri=notebook,
-            notebook_output_uri=notebook_output_uri,
-            container_uri="gcr.io/cloud-devrel-public-resources/python-samples-testing-docker:latest",
-        )
+    # return result
 
-        result.duration = datetime.datetime.now() - time_start
-        result.is_pass = True
-        print(f"{notebook} PASSED in {format_timedelta(result.duration)}.")
-    except Exception as error:
-        result.duration = datetime.datetime.now() - time_start
-        result.is_pass = False
-        result.error_message = str(error)
-        print(
-            f"{notebook} FAILED in {format_timedelta(result.duration)}: {result.error_message}"
-        )
-
-    return result
+    return operation
 
 
 def run_changed_notebooks(
@@ -203,7 +203,7 @@ def run_changed_notebooks(
     notebooks = notebooks.decode("utf-8").split("\n")
     notebooks = [notebook for notebook in notebooks if notebook.endswith(".ipynb")]
     notebooks = [notebook for notebook in notebooks if len(notebook) > 0]
-    notebooks = [notebook for notebook in notebooks if Path(notebook).exists()]
+    notebooks = [notebook for notebook in notebooks if pathlib.Path(notebook).exists()]
 
     notebook_execution_results: List[NotebookExecutionResult] = []
 
@@ -228,7 +228,8 @@ def run_changed_notebooks(
         #             )
         #         )
         # else:
-        notebook_execution_results = [
+
+        operations = [
             execute_notebook(
                 notebook=notebook,
                 staging_bucket=staging_bucket,
@@ -237,6 +238,15 @@ def run_changed_notebooks(
             )
             for notebook in notebooks
         ]
+
+        for future in concurrent.futures.as_completed(operations):
+            try:
+                data = future.result()
+            except Exception as exc:
+                print("%r generated an exception: %s" % (url, exc))
+            else:
+                print("%r page is %d bytes" % (url, len(data)))
+
     else:
         print("No notebooks modified in this pull request.")
 
