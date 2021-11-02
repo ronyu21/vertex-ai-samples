@@ -162,7 +162,7 @@ def execute_notebook(
             logs_bucket = operation_metadata.build.logs_bucket
 
             # Download tail end of logs file
-            log_file_uri = f"{logs_bucket}/logs-{logs_id}.txt"
+            log_file_uri = f"{logs_bucket}/log-{logs_id}.txt"
 
             # Use gcloud to get tail
             result.error_message = subprocess.check_output(
@@ -185,7 +185,7 @@ def run_changed_notebooks(
     staging_bucket: str,
     variable_project_id: str,
     variable_region: str,
-    should_parallelize: bool = False,
+    should_parallelize: bool = True,
 ):
     """
     Run the notebooks that exist under the folders defined in the test_paths_file.
@@ -283,15 +283,14 @@ def run_changed_notebooks(
         tabulate(
             [
                 [
-                    os.path.basename(os.path.normpath(result.notebook)),
+                    result.output_uri,
                     "PASSED" if result.is_pass else "FAILED",
                     format_timedelta(result.duration),
                     result.error_message or "--",
-                    result.output_uri,
                 ]
                 for result in notebooks_sorted
             ],
-            headers=["file", "status", "duration", "error", "output_uri"],
+            headers=["file", "status", "duration", "error"],
         )
     )
 

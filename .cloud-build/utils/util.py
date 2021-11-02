@@ -3,6 +3,7 @@ from typing import Optional
 from google.cloud import storage
 from google.cloud.aiplatform import utils
 from google.auth import credentials as auth_credentials
+import os
 
 import subprocess
 import tarfile
@@ -40,7 +41,7 @@ def archive_code_and_upload(staging_bucket: str):
 
     with tarfile.open(source_archived_file, "w:gz") as tar:
         for file in git_files:
-            if len(file) > 0:
+            if len(file) > 0 and os.path.exists(file):
                 tar.add(file)
 
     # Upload archive to GCS bucket
