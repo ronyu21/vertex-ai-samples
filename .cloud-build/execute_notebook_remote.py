@@ -5,6 +5,7 @@ import google.auth
 from google.cloud.devtools import cloudbuild_v1
 from google.cloud.devtools.cloudbuild_v1.types import Source, StorageSource
 
+from typing import Optional
 import yaml
 
 from google.cloud.aiplatform import utils
@@ -19,6 +20,7 @@ def execute_notebook_remote(
     notebook_uri: str,
     notebook_output_uri: str,
     container_uri: str,
+    tag: Optional[str],
 ) -> operation.Operation:
     """Create and execute a simple Google Cloud Build configuration,
     print the in-progress status and print the completed status."""
@@ -53,10 +55,11 @@ def execute_notebook_remote(
     )
 
     build.steps = cloudbuild_config["steps"]
-
     build.substitutions = substitutions
-
     build.timeout = duration_pb2.Duration(seconds=TIMEOUT_IN_SECONDS)
+
+    if tag:
+        build.tags = [tag]
 
     operation = client.create_build(project_id=project_id, build=build)
     # Print the in-progress operation

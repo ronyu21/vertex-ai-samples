@@ -21,6 +21,7 @@ import functools
 import os
 import pathlib
 import nbformat
+import re
 import subprocess
 from typing import List, Optional
 from tabulate import tabulate
@@ -102,6 +103,16 @@ def _process_notebook(
         nbformat.write(nb, new_file)
 
 
+def _create_tag(filepath: str) -> str:
+    tag = os.path.basename(os.path.normpath(filepath))
+    tag = re.sub("[^0-9a-zA-Z_.-]+", "-", tag)
+
+    if tag.startswith(".") or tag.startswith("-"):
+        tag = tag[1:]
+
+    return tag
+
+
 def execute_notebook(
     staging_bucket: str,
     artifacts_bucket: str,
@@ -137,11 +148,15 @@ def execute_notebook(
         # Upload the pre-processed code to a GCS bucket
         code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
 
+        # Create tag from notebook
+        tag = _create_tag(filepath=notebook)
+
         operation = execute_notebook_remote.execute_notebook_remote(
             code_archive_uri=code_archive_uri,
             notebook_uri=notebook,
             notebook_output_uri=notebook_output_uri,
             container_uri="gcr.io/cloud-devrel-public-resources/python-samples-testing-docker:latest",
+            tag=tag,
         )
 
         # Block and wait for the result
