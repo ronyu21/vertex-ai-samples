@@ -27,7 +27,7 @@ from tabulate import tabulate
 
 import execute_notebook_remote
 from utils import util, NotebookProcessors
-from google.api_core import operation
+from google.cloud.devtools.cloudbuild_v1.types import BuildOperationMetadata
 
 
 def str2bool(v):
@@ -129,6 +129,7 @@ def execute_notebook(
 
     # TODO: Handle cases where multiple notebooks have the same name
     time_start = datetime.datetime.now()
+    operation = None
     try:
         _process_notebook(
             notebook_path=notebook,
@@ -138,20 +139,39 @@ def execute_notebook(
 
         code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
 
-        execute_notebook_remote.execute_notebook_remote(
+        operation = execute_notebook_remote.execute_notebook_remote(
             code_archive_uri=code_archive_uri,
             notebook_uri=notebook,
             notebook_output_uri=notebook_output_uri,
             container_uri="gcr.io/cloud-devrel-public-resources/python-samples-testing-docker:latest",
         )
 
+        # Block and wait for the result
+        operation_result = operation.result()
+
         result.duration = datetime.datetime.now() - time_start
         result.is_pass = True
         print(f"{notebook} PASSED in {format_timedelta(result.duration)}.")
     except Exception as error:
+        result.error_message = str(error)
+
+        if operation:
+            # Extract the build id
+            operation_metadata = BuildOperationMetadata(mapping=operation.metadata)
+            logs_id = operation_metadata.build.id
+            logs_bucket = operation_metadata.build.logs_bucket
+
+            # Download tail end of logs file
+            log_file_uri = f"{logs_bucket}/logs-{logs_id}.txt"
+
+            # Use gcloud to get tail
+            result.error_message = subprocess.check_output(
+                ["gsutil", "cat", "-r", "-1000", log_file_uri], encoding="UTF-8"
+            )
+
         result.duration = datetime.datetime.now() - time_start
         result.is_pass = False
-        result.error_message = str(error)
+
         print(
             f"{notebook} FAILED in {format_timedelta(result.duration)}: {result.error_message}"
         )

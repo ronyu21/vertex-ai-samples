@@ -62,10 +62,9 @@ def execute_notebook_remote(
     # print("IN PROGRESS:")
     # print(operation.metadata)
 
-    result = operation.result()
     # Print the completed status
     # print("RESULT:", result.status)
-    return result
+    return operation
 
 
 # # project = "python-docs-samples-tests"
