@@ -9,6 +9,14 @@ import subprocess
 import tarfile
 import uuid
 
+def download_file(bucket_name: str, blob_name: str, destination_file: str) -> str:
+    from google.cloud import storage
+
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+
+    blob.download_to_filename(filename=destination_file)
 
 def upload_file(
     local_file_path: str,

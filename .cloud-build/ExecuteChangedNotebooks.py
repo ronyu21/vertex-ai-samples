@@ -65,9 +65,10 @@ def format_timedelta(delta: datetime.timedelta) -> str:
 @dataclasses.dataclass
 class NotebookExecutionResult:
     notebook: str
-    output_uri: str
     duration: datetime.timedelta
     is_pass: bool
+    output_uri: Optional[None]
+    build_id: Optional[None]
     error_message: Optional[str]
 
 
@@ -115,9 +116,10 @@ def execute_notebook(
 
     result = NotebookExecutionResult(
         notebook=notebook,
-        output_uri=notebook_output_uri,
         duration=datetime.timedelta(seconds=0),
         is_pass=False,
+        output_uri=notebook_output_uri,
+        build_id=None,
         error_message=None,
     )
 
@@ -125,12 +127,14 @@ def execute_notebook(
     time_start = datetime.datetime.now()
     operation = None
     try:
+        # Pre-process notebook by substituting variable names
         _process_notebook(
             notebook_path=notebook,
             variable_project_id=variable_project_id,
             variable_region=variable_region,
         )
 
+        # Upload the pre-processed code to a GCS bucket
         code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
 
         operation = execute_notebook_remote.execute_notebook_remote(
@@ -152,16 +156,17 @@ def execute_notebook(
         if operation:
             # Extract the build id
             operation_metadata = BuildOperationMetadata(mapping=operation.metadata)
-            logs_id = operation_metadata.build.id
+            build_id = operation_metadata.build.id
             logs_bucket = operation_metadata.build.logs_bucket
 
             # Download tail end of logs file
-            log_file_uri = f"{logs_bucket}/log-{logs_id}.txt"
+            log_file_uri = f"{logs_bucket}/log-{build_id}.txt"
 
             # Use gcloud to get tail
             result.error_message = subprocess.check_output(
                 ["gsutil", "cat", "-r", "-1000", log_file_uri], encoding="UTF-8"
             )
+            result.build_id = build_id
 
         result.duration = datetime.datetime.now() - time_start
         result.is_pass = False
@@ -283,13 +288,14 @@ def run_changed_notebooks(
             [
                 [
                     result.output_uri,
+                    result.build_id,
                     "PASSED" if result.is_pass else "FAILED",
                     format_timedelta(result.duration),
                     result.error_message or "--",
                 ]
                 for result in notebooks_sorted
             ],
-            headers=["file", "status", "duration", "error"],
+            headers=["file", "build_id", "status", "duration", "error"],
         )
     )
 

@@ -26,16 +26,6 @@ from google.cloud.aiplatform import utils
 # The replaces calling the nbconvert via command-line, which doesn't write the output notebook correctly when there are errors during execution.
 
 
-def download_file(bucket_name: str, blob_name: str, destination_file: str) -> str:
-    from google.cloud import storage
-
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-
-    blob.download_to_filename(filename=destination_file)
-
-
 def execute_notebook(
     notebook_source: str,
     output_file_or_uri: str,
@@ -52,7 +42,7 @@ def execute_notebook(
 
         # Download remote notebook to local file system
         notebook_source = file_name
-        download_file(
+        util.download_file(
             bucket_name=bucket_name, blob_name=prefix, destination_file=notebook_source
         )
 
@@ -98,27 +88,3 @@ def execute_notebook(
 
             print(f"Writing output to: {output_file_or_uri}")
             shutil.move(notebook_source, output_file_or_uri)
-
-
-# import argparse
-
-# parser = argparse.ArgumentParser(description="Run changed notebooks.")
-# parser.add_argument(
-#     "--notebook_source",
-#     type=str,
-#     help="Local filepath or GCS URI to notebook.",
-#     required=True,
-# )
-# parser.add_argument(
-#     "--output_folder_or_uri",
-#     type=str,
-#     help="Local folder or GCS URI to save executed notebook to.",
-#     required=True,
-# )
-
-# args = parser.parse_args()
-# execute_notebook(
-#     notebook_source=args.notebook_source,
-#     output_file_or_uri=args.output_folder_or_uri,
-#     should_log_output=True,
-# )

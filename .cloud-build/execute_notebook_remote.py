@@ -51,6 +51,7 @@ def execute_notebook_remote(
             object_=source_archived_file_gcs_object,
         )
     )
+
     build.steps = cloudbuild_config["steps"]
 
     build.substitutions = substitutions
@@ -65,25 +66,3 @@ def execute_notebook_remote(
     # Print the completed status
     # print("RESULT:", result.status)
     return operation
-
-
-# # project = "python-docs-samples-tests"
-# staging_bucket = "gs://ivanmkc-test2/notebooks"
-# # destination_gcs_folder = staging_bucket + "/notebooks"
-# output_uri = staging_bucket + "/notebooks/output/output.ipynb"
-# code_gcs_uri = staging_bucket + "/code_archives"
-
-# local_notebook_path = "notebooks/official/custom/test.ipynb"
-
-# notebook_uri = "gs://ivanmkc-test2/cloudbuild-test/test.ipynb"
-
-# from utils import util
-
-# code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
-
-# execute_notebook_remote(
-#     code_archive_uri=code_archive_uri,
-#     notebook_uri=local_notebook_path,
-#     notebook_output_uri=output_uri,
-#     container_uri="gcr.io/cloud-devrel-public-resources/python-samples-testing-docker:latest",
-# )
