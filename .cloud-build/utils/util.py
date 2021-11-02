@@ -6,6 +6,7 @@ from google.auth import credentials as auth_credentials
 
 import subprocess
 import tarfile
+import uuid
 
 
 def upload_file(
@@ -30,8 +31,8 @@ def upload_file(
 
 def archive_code_and_upload(staging_bucket: str):
     # Archive all source in current directory
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    source_archived_file = f"source_archived_{timestamp}.tar.gz"
+    unique_id = uuid.uuid4()
+    source_archived_file = f"source_archived_{unique_id}.tar.gz"
 
     git_files = subprocess.check_output(
         ["git", "ls-tree", "-r", "HEAD", "--name-only"], encoding="UTF-8"

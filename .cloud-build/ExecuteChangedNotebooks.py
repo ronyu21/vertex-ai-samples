@@ -17,6 +17,7 @@ import argparse
 import concurrent
 import dataclasses
 import datetime
+import functools
 import os
 import pathlib
 import nbformat
@@ -70,16 +71,13 @@ class NotebookExecutionResult:
     error_message: Optional[str]
 
 
-def execute_notebook(
-    notebook: str,
-    staging_bucket: str,
+def _process_notebook(
+    notebook_path: str,
     variable_project_id: str,
     variable_region: str,
-) -> operation.Operation:
-    print(f"Running notebook: {notebook}")
-
+):
     # Read notebook
-    with open(notebook) as f:
+    with open(notebook_path) as f:
         nb = nbformat.read(f, as_version=4)
 
     # Create preprocessors
@@ -99,8 +97,17 @@ def execute_notebook(
 
     (nb, resources) = update_variables_preprocessor.preprocess(nb, resources)
 
-    with open(notebook, mode="w", encoding="utf-8") as new_file:
+    with open(notebook_path, mode="w", encoding="utf-8") as new_file:
         nbformat.write(nb, new_file)
+
+
+def execute_notebook(
+    staging_bucket: str,
+    variable_project_id: str,
+    variable_region: str,
+    notebook: str,
+) -> NotebookExecutionResult:
+    print(f"Running notebook: {notebook}")
 
     # Create paths
     artifacts_uri = "/".join(
@@ -112,40 +119,44 @@ def execute_notebook(
 
     notebook_output_uri = "/".join([artifacts_uri, pathlib.Path(notebook).name])
 
-    # result = NotebookExecutionResult(
-    #     notebook=notebook,
-    #     output_uri=notebook_output_uri,
-    #     duration=datetime.timedelta(seconds=0),
-    #     is_pass=False,
-    #     error_message=None,
-    # )
-
-    # # TODO: Handle cases where multiple notebooks have the same name
-    # time_start = datetime.datetime.now()
-    # try:
-    code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
-
-    operation = execute_notebook_remote.execute_notebook_remote(
-        code_archive_uri=code_archive_uri,
-        notebook_uri=notebook,
-        notebook_output_uri=notebook_output_uri,
-        container_uri="gcr.io/cloud-devrel-public-resources/python-samples-testing-docker:latest",
+    result = NotebookExecutionResult(
+        notebook=notebook,
+        output_uri=notebook_output_uri,
+        duration=datetime.timedelta(seconds=0),
+        is_pass=False,
+        error_message=None,
     )
 
-    #     result.duration = datetime.datetime.now() - time_start
-    #     result.is_pass = True
-    #     print(f"{notebook} PASSED in {format_timedelta(result.duration)}.")
-    # except Exception as error:
-    #     result.duration = datetime.datetime.now() - time_start
-    #     result.is_pass = False
-    #     result.error_message = str(error)
-    #     print(
-    #         f"{notebook} FAILED in {format_timedelta(result.duration)}: {result.error_message}"
-    #     )
+    # TODO: Handle cases where multiple notebooks have the same name
+    time_start = datetime.datetime.now()
+    try:
+        _process_notebook(
+            notebook_path=notebook,
+            variable_project_id=variable_project_id,
+            variable_region=variable_region,
+        )
 
-    # return result
+        code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
 
-    return operation
+        execute_notebook_remote.execute_notebook_remote(
+            code_archive_uri=code_archive_uri,
+            notebook_uri=notebook,
+            notebook_output_uri=notebook_output_uri,
+            container_uri="gcr.io/cloud-devrel-public-resources/python-samples-testing-docker:latest",
+        )
+
+        result.duration = datetime.datetime.now() - time_start
+        result.is_pass = True
+        print(f"{notebook} PASSED in {format_timedelta(result.duration)}.")
+    except Exception as error:
+        result.duration = datetime.datetime.now() - time_start
+        result.is_pass = False
+        result.error_message = str(error)
+        print(
+            f"{notebook} FAILED in {format_timedelta(result.duration)}: {result.error_message}"
+        )
+
+    return result
 
 
 def run_changed_notebooks(
@@ -154,6 +165,7 @@ def run_changed_notebooks(
     staging_bucket: str,
     variable_project_id: str,
     variable_region: str,
+    should_parallelize: bool = False,
 ):
     """
     Run the notebooks that exist under the folders defined in the test_paths_file.
@@ -210,43 +222,32 @@ def run_changed_notebooks(
     if len(notebooks) > 0:
         print(f"Found {len(notebooks)} modified notebooks: {notebooks}")
 
-        # if should_parallelize and len(notebooks) > 1:
-        #     print(
-        #         "Running notebooks in parallel, so no logs will be displayed. Please wait..."
-        #     )
-        #     with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
-        #         notebook_execution_results = list(
-        #             executor.map(
-        #                 functools.partial(
-        #                     execute_notebook,
-        #                     staging_bucket,
-        #                     variable_project_id,
-        #                     variable_region,
-        #                     False,
-        #                 ),
-        #                 notebooks,
-        #             )
-        #         )
-        # else:
-
-        operations = [
-            execute_notebook(
-                notebook=notebook,
-                staging_bucket=staging_bucket,
-                variable_project_id=variable_project_id,
-                variable_region=variable_region,
+        if should_parallelize and len(notebooks) > 1:
+            print(
+                "Running notebooks in parallel, so no logs will be displayed. Please wait..."
             )
-            for notebook in notebooks
-        ]
-
-        for future in concurrent.futures.as_completed(operations):
-            try:
-                data = future.result()
-            except Exception as exc:
-                print("%r generated an exception: %s" % (url, exc))
-            else:
-                print("%r page is %d bytes" % (url, len(data)))
-
+            with concurrent.futures.ThreadPoolExecutor(max_workers=None) as executor:
+                notebook_execution_results = list(
+                    executor.map(
+                        functools.partial(
+                            execute_notebook,
+                            staging_bucket,
+                            variable_project_id,
+                            variable_region,
+                        ),
+                        notebooks,
+                    )
+                )
+        else:
+            notebook_execution_results = [
+                execute_notebook(
+                    staging_bucket=staging_bucket,
+                    variable_project_id=variable_project_id,
+                    variable_region=variable_region,
+                    notebook=notebook,
+                )
+                for notebook in notebooks
+            ]
     else:
         print("No notebooks modified in this pull request.")
 
