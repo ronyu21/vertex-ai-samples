@@ -104,17 +104,6 @@ def execute_notebook(
     with open(notebook, mode="w", encoding="utf-8") as new_file:
         nbformat.write(nb, new_file)
 
-    result = NotebookExecutionResult(
-        notebook=notebook,
-        output_uri="",
-        duration=datetime.timedelta(seconds=0),
-        is_pass=False,
-        error_message=None,
-    )
-
-    # TODO: Handle cases where multiple notebooks have the same name
-    time_start = datetime.datetime.now()
-
     # Create paths
     artifacts_uri = "/".join(
         [
@@ -125,10 +114,20 @@ def execute_notebook(
 
     notebook_output_uri = "/".join([artifacts_uri, pathlib.Path(notebook).name])
 
+    result = NotebookExecutionResult(
+        notebook=notebook,
+        output_uri=notebook_output_uri,
+        duration=datetime.timedelta(seconds=0),
+        is_pass=False,
+        error_message=None,
+    )
+
+    # TODO: Handle cases where multiple notebooks have the same name
+    time_start = datetime.datetime.now()
     try:
         code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
 
-        execute_notebook_remote(
+        execute_notebook_remote.execute_notebook_remote(
             code_archive_uri=code_archive_uri,
             notebook_uri=notebook,
             notebook_output_uri=notebook_output_uri,
@@ -139,7 +138,6 @@ def execute_notebook(
         result.is_pass = True
         print(f"{notebook} PASSED in {format_timedelta(result.duration)}.")
     except Exception as error:
-        result.output_uri = notebook_output_uri
         result.duration = datetime.datetime.now() - time_start
         result.is_pass = False
         result.error_message = str(error)
