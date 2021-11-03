@@ -151,7 +151,9 @@ def execute_notebook(
         )
 
         # Upload the pre-processed code to a GCS bucket
-        code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
+        code_archive_uri = util.archive_code_and_upload(
+            staging_bucket=staging_bucket, tag=tag
+        )
 
         operation = execute_notebook_remote.execute_notebook_remote(
             code_archive_uri=code_archive_uri,
@@ -300,11 +302,12 @@ def run_changed_notebooks(
 
     print("\n=== RESULTS ===\n")
 
-    notebooks_sorted = sorted(
+    results_sorted = sorted(
         notebook_execution_results,
         key=lambda result: result.is_pass,
         reverse=True,
     )
+
     # Print results
     print(
         tabulate(
@@ -316,13 +319,17 @@ def run_changed_notebooks(
                     result.log_url,
                     result.error_message or "--",
                 ]
-                for result in notebooks_sorted
+                for result in results_sorted
             ],
             headers=["build_tag", "status", "duration", "log_url", "error"],
         )
     )
 
     print("\n=== END RESULTS===\n")
+
+    # Raise error if any notebooks failed
+    if not all([result.is_pass for result in results_sorted]):
+        raise RuntimeError("Notebook failures detected. See logs for details")
 
 
 parser = argparse.ArgumentParser(description="Run changed notebooks.")

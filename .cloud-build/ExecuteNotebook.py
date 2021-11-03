@@ -23,7 +23,6 @@ from utils import util
 from google.cloud.aiplatform import utils
 
 # This script is used to execute a notebook and write out the output notebook.
-# The replaces calling the nbconvert via command-line, which doesn't write the output notebook correctly when there are errors during execution.
 
 
 def execute_notebook(
@@ -46,8 +45,6 @@ def execute_notebook(
             bucket_name=bucket_name, blob_name=prefix, destination_file=notebook_source
         )
 
-    has_error = False
-
     # Execute notebook
     try:
         # Execute notebook
@@ -61,16 +58,8 @@ def execute_notebook(
             stderr_file=sys.stderr if should_log_output else None,
         )
     except Exception:
-        # print(f"Error executing the notebook: {notebook_file_path}.\n\n")
-        has_error = True
-
         raise
-
     finally:
-        # # Clear env
-        # if env_name is not None:
-        #     shutil.rmtree(path=env_name)
-
         # Copy executed notebook
         if output_file_or_uri.startswith("gs://"):
             # Upload to GCS path
