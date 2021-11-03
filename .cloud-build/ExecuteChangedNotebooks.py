@@ -65,11 +65,12 @@ def format_timedelta(delta: datetime.timedelta) -> str:
 
 @dataclasses.dataclass
 class NotebookExecutionResult:
-    notebook: str
+    name: str
     duration: datetime.timedelta
     is_pass: bool
-    output_uri: Optional[None]
-    build_id: Optional[None]
+    log_url: str
+    output_uri: str
+    build_id: str
     error_message: Optional[str]
 
 
@@ -125,12 +126,16 @@ def execute_notebook(
     # Create paths
     notebook_output_uri = "/".join([artifacts_bucket, pathlib.Path(notebook).name])
 
+    # Create tag from notebook
+    tag = _create_tag(filepath=notebook)
+
     result = NotebookExecutionResult(
-        notebook=notebook,
+        name=tag,
         duration=datetime.timedelta(seconds=0),
         is_pass=False,
         output_uri=notebook_output_uri,
-        build_id=None,
+        log_url="",
+        build_id="",
         error_message=None,
     )
 
@@ -148,9 +153,6 @@ def execute_notebook(
         # Upload the pre-processed code to a GCS bucket
         code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
 
-        # Create tag from notebook
-        tag = _create_tag(filepath=notebook)
-
         operation = execute_notebook_remote.execute_notebook_remote(
             code_archive_uri=code_archive_uri,
             notebook_uri=notebook,
@@ -158,6 +160,10 @@ def execute_notebook(
             container_uri="gcr.io/cloud-devrel-public-resources/python-samples-testing-docker:latest",
             tag=tag,
         )
+
+        operation_metadata = BuildOperationMetadata(mapping=operation.metadata)
+        result.build_id = operation_metadata.build.id
+        result.log_url = operation_metadata.build.log_url
 
         # Block and wait for the result
         operation_result = operation.result()
@@ -169,13 +175,11 @@ def execute_notebook(
         result.error_message = str(error)
 
         if operation:
-            # Extract the build id
-            operation_metadata = BuildOperationMetadata(mapping=operation.metadata)
-            build_id = operation_metadata.build.id
+            # Extract the logs
             logs_bucket = operation_metadata.build.logs_bucket
 
             # Download tail end of logs file
-            log_file_uri = f"{logs_bucket}/log-{build_id}.txt"
+            log_file_uri = f"{logs_bucket}/log-{result.build_id}.txt"
 
             # Use gcloud to get tail
             try:
@@ -184,8 +188,6 @@ def execute_notebook(
                 )
             except Exception as error:
                 result.error_message = str(error)
-
-            result.build_id = build_id
 
         result.duration = datetime.datetime.now() - time_start
         result.is_pass = False
@@ -204,7 +206,7 @@ def run_changed_notebooks(
     artifacts_bucket: str,
     variable_project_id: str,
     variable_region: str,
-    should_parallelize: bool = True,
+    should_parallelize: bool,
 ):
     """
     Run the notebooks that exist under the folders defined in the test_paths_file.
@@ -229,6 +231,8 @@ def run_changed_notebooks(
             Required. The value for PROJECT_ID to inject into notebooks.
         variable_region (str):
             Required. The value for REGION to inject into notebooks.
+        should_parallelize (bool):
+            Required. Should run notebooks in parallel using a thread pool as opposed to in sequence.
     """
 
     test_paths = []
@@ -306,15 +310,15 @@ def run_changed_notebooks(
         tabulate(
             [
                 [
-                    result.output_uri,
-                    result.build_id,
+                    result.name,
                     "PASSED" if result.is_pass else "FAILED",
                     format_timedelta(result.duration),
+                    result.log_url,
                     result.error_message or "--",
                 ]
                 for result in notebooks_sorted
             ],
-            headers=["file", "build_id", "status", "duration", "error"],
+            headers=["build_tag", "status", "duration", "log_url", "error"],
         )
     )
 
@@ -363,6 +367,14 @@ parser.add_argument(
     help="The GCP directory for storing executed notebooks.",
     required=True,
 )
+parser.add_argument(
+    "--should_parallelize",
+    type=str2bool,
+    nargs="?",
+    const=True,
+    default=False,
+    help="Should run notebooks in parallel.",
+)
 
 args = parser.parse_args()
 run_changed_notebooks(
@@ -372,4 +384,5 @@ run_changed_notebooks(
     artifacts_bucket=args.artifacts_bucket,
     variable_project_id=args.variable_project_id,
     variable_region=args.variable_region,
+    should_parallelize=args.should_parallelize,
 )
