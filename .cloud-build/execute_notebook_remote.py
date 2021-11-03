@@ -57,6 +57,7 @@ def execute_notebook_remote(
     build.steps = cloudbuild_config["steps"]
     build.substitutions = substitutions
     build.timeout = duration_pb2.Duration(seconds=TIMEOUT_IN_SECONDS)
+    build.queue_ttl = duration_pb2.Duration(seconds=TIMEOUT_IN_SECONDS)
 
     if tag:
         build.tags = [tag]

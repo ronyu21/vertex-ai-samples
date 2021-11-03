@@ -178,9 +178,13 @@ def execute_notebook(
             log_file_uri = f"{logs_bucket}/log-{build_id}.txt"
 
             # Use gcloud to get tail
-            result.error_message = subprocess.check_output(
-                ["gsutil", "cat", "-r", "-1000", log_file_uri], encoding="UTF-8"
-            )
+            try:
+                result.error_message = subprocess.check_output(
+                    ["gsutil", "cat", "-r", "-1000", log_file_uri], encoding="UTF-8"
+                )
+            except Exception as error:
+                result.error_message = str(error)
+
             result.build_id = build_id
 
         result.duration = datetime.datetime.now() - time_start
