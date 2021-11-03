@@ -115,6 +115,7 @@ def _create_tag(filepath: str) -> str:
 
 
 def execute_notebook(
+    container_uri: str,
     staging_bucket: str,
     artifacts_bucket: str,
     variable_project_id: str,
@@ -151,15 +152,13 @@ def execute_notebook(
         )
 
         # Upload the pre-processed code to a GCS bucket
-        code_archive_uri = util.archive_code_and_upload(
-            staging_bucket=staging_bucket, tag=tag
-        )
+        code_archive_uri = util.archive_code_and_upload(staging_bucket=staging_bucket)
 
         operation = execute_notebook_remote.execute_notebook_remote(
             code_archive_uri=code_archive_uri,
             notebook_uri=notebook,
             notebook_output_uri=notebook_output_uri,
-            container_uri="gcr.io/cloud-devrel-public-resources/python-samples-testing-docker:latest",
+            container_uri=container_uri,
             tag=tag,
         )
 
@@ -203,18 +202,19 @@ def execute_notebook(
 
 def run_changed_notebooks(
     test_paths_file: str,
-    base_branch: Optional[str],
+    container_uri: str,
     staging_bucket: str,
     artifacts_bucket: str,
     variable_project_id: str,
     variable_region: str,
     should_parallelize: bool,
+    base_branch: Optional[str] = None,
 ):
     """
     Run the notebooks that exist under the folders defined in the test_paths_file.
     It only runs notebooks that have differences from the Git base_branch.
 
-    The executed notebooks are saved in the output_folder.
+    The executed notebooks are saved in the artifacts_bucket.
 
     Variables are also injected into the notebooks such as the variable_project_id and variable_region.
 
@@ -278,6 +278,7 @@ def run_changed_notebooks(
                     executor.map(
                         functools.partial(
                             execute_notebook,
+                            container_uri,
                             staging_bucket,
                             artifacts_bucket,
                             variable_project_id,
@@ -289,6 +290,7 @@ def run_changed_notebooks(
         else:
             notebook_execution_results = [
                 execute_notebook(
+                    container_uri=container_uri,
                     staging_bucket=staging_bucket,
                     artifacts_bucket=artifacts_bucket,
                     variable_project_id=variable_project_id,
@@ -345,9 +347,9 @@ parser.add_argument(
     required=False,
 )
 parser.add_argument(
-    "--output_folder",
-    type=pathlib.Path,
-    help="The path to the folder to store executed notebooks.",
+    "--container_uri",
+    type=str,
+    help="The container uri to run each notebook in.",
     required=True,
 )
 parser.add_argument(
@@ -386,10 +388,11 @@ parser.add_argument(
 args = parser.parse_args()
 run_changed_notebooks(
     test_paths_file=args.test_paths_file,
-    base_branch=args.base_branch,
+    container_uri=args.container_uri,
     staging_bucket=args.staging_bucket,
     artifacts_bucket=args.artifacts_bucket,
     variable_project_id=args.variable_project_id,
     variable_region=args.variable_region,
     should_parallelize=args.should_parallelize,
+    base_branch=args.base_branch,
 )
