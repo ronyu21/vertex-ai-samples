@@ -381,7 +381,7 @@ parser.add_argument(
     type=str2bool,
     nargs="?",
     const=True,
-    default=False,
+    default=True,
     help="Should run notebooks in parallel.",
 )
 
