@@ -319,11 +319,10 @@ def run_changed_notebooks(
                     "PASSED" if result.is_pass else "FAILED",
                     format_timedelta(result.duration),
                     result.log_url,
-                    result.error_message or "--",
                 ]
                 for result in results_sorted
             ],
-            headers=["build_tag", "status", "duration", "log_url", "error"],
+            headers=["build_tag", "status", "duration", "log_url"],
         )
     )
 
